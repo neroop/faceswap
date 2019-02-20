@@ -24,6 +24,7 @@
 !plugins/model/*
 !tools
 !tools/lib*
+!dataset/
 
 *.pyc
 __pycache__/
