@@ -1,12 +1,30 @@
 # -*- coding: UTF-8 -*-
 
-"""根据搜索词下载百度图片"""
-import re
-import sys
+
+import hashlib
 import os
+import re
 import urllib
 
+import pickledb
 import requests
+
+m = hashlib.md5()
+
+db = pickledb.load('url.db', True)
+
+
+def get_picture_name(pic_url):
+    m.update(pic_url.encode('UTF-8'))
+
+    name_index = pic_url.rfind('/')
+    pic_name = pic_url[name_index+1:]
+    if '.' not in pic_name:
+        pic_name = m.hexdigest() + '.jpg'
+    else:
+        pic_ext = pic_name[pic_name.rindex('.'):]
+        pic_name = m.hexdigest() + pic_ext
+    return pic_name
 
 
 def get_onepage_urls(onepageurl):
@@ -33,12 +51,15 @@ def down_pic(pic_urls, base_dir):
     """给出图片链接列表, 下载所有图片"""
     for i, pic_url in enumerate(pic_urls):
         try:
+            if db.get(pic_url):
+                print('照片已下载: %s' % str(pic_url))
+                continue
             pic = requests.get(pic_url, timeout=15)
-            file_path = os.path.join(base_dir, str(i+1) + '.jpg')
-            string = str(i + 1) + '.jpg'
-            with open(string, 'wb') as f:
+            file_path = os.path.join(base_dir, get_picture_name(pic_url))
+            with open(file_path, 'wb') as f:
                 f.write(pic.content)
                 print('成功下载第%s张图片: %s' % (str(i + 1), str(pic_url)))
+                db.set(pic_url, True)
         except Exception as e:
             print('下载第%s张图片时失败: %s' % (str(i + 1), str(pic_url)))
             print(e)
@@ -62,4 +83,4 @@ if __name__ == '__main__':
             break
         all_pic_urls.extend(onepage_urls)
 
-    down_pic(list(set(all_pic_urls)), '/Users/zhou/Downloads/lyf')
+    down_pic(list(set(all_pic_urls)), '/home/zhou/Downloads/lyf')
