@@ -30,21 +30,24 @@ class Detect(Detector):
     """ MTCNN detector for face recognition """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.kwargs = None
+        self.kwargs = self.validate_kwargs()
         self.name = "mtcnn"
         self.target = 2073600  # Uses approx 1.30 GB of VRAM
         self.vram = 1408
 
-    @staticmethod
-    def validate_kwargs(kwargs):
-        """ Validate that cli kwargs are correct. If not reset to default """
+    def validate_kwargs(self):
+        """ Validate that config options are correct. If not reset to default """
         valid = True
-        if kwargs['minsize'] < 10:
+        threshold = [self.config["threshold_1"],
+                     self.config["threshold_2"],
+                     self.config["threshold_3"]]
+        kwargs = {"minsize": self.config["minsize"],
+                  "threshold": threshold,
+                  "factor": self.config["scalefactor"]}
+
+        if kwargs["minsize"] < 10:
             valid = False
-        elif len(kwargs['threshold']) != 3:
-            valid = False
-        elif not all(0.0 < threshold < 1.0
-                     for threshold in kwargs['threshold']):
+        elif not all(0.0 < threshold <= 1.0 for threshold in kwargs['threshold']):
             valid = False
         elif not 0.0 < kwargs['factor'] < 1.0:
             valid = False
@@ -53,7 +56,7 @@ class Detect(Detector):
             kwargs = {"minsize": 20,                 # minimum size of face
                       "threshold": [0.6, 0.7, 0.7],  # three steps threshold
                       "factor": 0.709}               # scale factor
-            logger.warning("Invalid MTCNN arguments received. Running with defaults")
+            logger.warning("Invalid MTCNN options in config. Running with defaults")
         logger.debug("Using mtcnn kwargs: %s", kwargs)
         return kwargs
 
@@ -72,7 +75,6 @@ class Detect(Detector):
         super().initialize(*args, **kwargs)
         logger.info("Initializing MTCNN Detector...")
         is_gpu = False
-        self.kwargs = kwargs["mtcnn_kwargs"]
 
         # Must import tensorflow inside the spawned process
         # for Windows machines
@@ -136,7 +138,7 @@ class Detect(Detector):
             if item == "EOF":
                 break
             logger.trace("Detecting faces: '%s'", item["filename"])
-            detect_image = self.compile_detection_image(item["image"], False, False)
+            [detect_image, scale] = self.compile_detection_image(item["image"], False, False)
 
             for angle in self.rotation:
                 current_image, rotmat = self.rotate_image(detect_image, angle)
@@ -146,13 +148,13 @@ class Detect(Detector):
                 if faces.any():
                     break
 
-            detected_faces = self.process_output(faces, points, rotmat)
+            detected_faces = self.process_output(faces, points, rotmat, scale)
             item["detected_faces"] = detected_faces
             self.finalize(item)
 
         logger.debug("Thread Completed Detect")
 
-    def process_output(self, faces, points, rotation_matrix):
+    def process_output(self, faces, points, rotation_matrix, scale):
         """ Compile found faces for output """
         logger.trace("Processing Output: (faces: %s, points: %s, rotation_matrix: %s)",
                      faces, points, rotation_matrix)
@@ -164,10 +166,10 @@ class Detect(Detector):
             faces = [self.rotate_rect(face, rotation_matrix)
                      for face in faces]
         detected = [dlib.rectangle(  # pylint: disable=c-extension-no-member
-            int(face.left() / self.scale),
-            int(face.top() / self.scale),
-            int(face.right() / self.scale),
-            int(face.bottom() / self.scale))
+            int(face.left() / scale),
+            int(face.top() / scale),
+            int(face.right() / scale),
+            int(face.bottom() / scale))
                     for face in faces]
         logger.trace("Processed Output: %s", detected)
         return detected
